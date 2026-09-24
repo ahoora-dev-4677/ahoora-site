@@ -1,114 +1,153 @@
 import tkinter as tk
 from tkinter import messagebox
+import json
+import os
+
+
+# ==============================
+#   تنظیمات اولیه
+# ==============================
+DATA_FILE = "tasks.json"
 
 root = tk.Tk()
 root.title("لیست کارها")
-root.geometry("400x500")
+root.geometry("400x550")
+root.config(bg="#f0f0f0")
 
-edit_index = None
+
+# ==============================
+#   ذخیره و بارگذاری (JSON طبق راهنما)
+# ==============================
+def save_tasks():
+    """ذخیره کارها + وضعیت انجام‌شدن در قالب JSON"""
+    tasks = []
+    for i in range(task_list.size()):
+        tasks.append({
+            "task": task_list.get(i),
+            "done": task_list.itemcget(i, "fg") == "gray"
+        })
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(tasks, f, ensure_ascii=False, indent=2)
 
 
-def add_task():
-    task = task_entry.get().strip()
-    priority = priority_entry.get().strip()
-    if task != "" and priority != "":
-        task_list.insert(tk.END, task + " -- " + priority)
-        task_entry.delete(0, tk.END)
-        priority_entry.delete(0, tk.END)
-    else:
-        messagebox.showwarning("هشدار", "لطفاً هر دو فیلد را پر کنید!")
+def load_tasks():
+    """بارگذاری کارها از فایل JSON"""
+    if not os.path.exists(DATA_FILE):
+        return
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            for item in json.load(f):
+                idx = task_list.insert(tk.END, item["task"])
+                if item.get("done"):
+                    task_list.itemconfig(idx, fg="gray")
+    except (json.JSONDecodeError, KeyError):
+        messagebox.showerror("خطا", "فایل ذخیره‌سازی خراب است.")
+
+
+# ==============================
+#   شمارنده‌ی کارها (نکته ۷ راهنما)
+# ==============================
+def update_counter():
+    total = task_list.size()
+    done = sum(
+        1 for i in range(total)
+        if task_list.itemcget(i, "fg") == "gray"
+    )
+    remaining = total - done
+    counter_label.config(
+        text=f"باقی‌مانده: {remaining}"
+    )
+
+
+# ==============================
+#   مرتب‌سازی (نکته ۷ راهنما)
+# ==============================
+def sort_tasks():
+    """مرتب‌سازی کارها بر اساس اولویت (انجام‌نشده‌ها بالا)"""
+    tasks = []
+    for i in range(task_list.size()):
+        tasks.append({
+            "task": task_list.get(i),
+            "done": task_list.itemcget(i, "fg") == "gray"
+        })
+
+    tasks.sort(key=lambda t: t["done"])
+
+    task_list.delete(0, tk.END)
+    for t in tasks:
+        idx = task_list.insert(tk.END, t["task"])
+        if t["done"]:
+            task_list.itemconfig(idx, fg="gray")
+
+    save_tasks()
+    update_counter()
+
+
+# ==============================
+#   توابع رویداد
+# ==============================
+def add_task(event=None):
+    text = task_entry.get().strip()
+    if text == "":
+        messagebox.showwarning("هشدار", "متن کار نمی‌تواند خالی باشد.")
+        return
+    task_list.insert(tk.END, text)
+    task_entry.delete(0, tk.END)
+    save_tasks()
+    update_counter()
+    messagebox.showinfo("پیام", "کار با موفقیت اضافه شد")
 
 
 def delete_task():
     selected = task_list.curselection()
-    if selected:
-        task_list.delete(selected[0])
-    else:
-        messagebox.showwarning("هشدار", "لطفاً یک کار را انتخاب کنید!")
+    if not selected:
+        messagebox.showwarning("هشدار", "لطفاً یک کار انتخاب کنید")
+        return
+
+    answer = messagebox.askyesno("حذف", "مطمئنید می‌خواید حذف بشه؟")
+    if not answer:
+        return
+
+    task_list.delete(selected[0])
+    save_tasks()
+    update_counter()
 
 
 def mark_done():
     selected = task_list.curselection()
-    if selected:
-        task_list.itemconfig(selected[0], fg="gray")
-    else:
-        messagebox.showwarning("هشدار", "لطفاً یک کار را انتخاب کنید!")
-
-
-def edit_task():
-    global edit_index
-    selected = task_list.curselection()
-    if selected:
-        edit_index = selected[0]
-        task = task_list.get(edit_index)
-        task_part, priority_part = task.split(" -- ")
-
-        task_entry.delete(0, tk.END)
-        priority_entry.delete(0, tk.END)
-
-        task_entry.insert(0, task_part)
-        priority_entry.insert(0, priority_part)
-    else:
-        messagebox.showwarning("هشدار", "لطفاً یک کار را برای ویرایش انتخاب کنید!")
-
-
-def save_edit():
-    global edit_index
-    if edit_index is not None:
-        task = task_entry.get().strip()
-        priority = priority_entry.get().strip()
-        if task != "" and priority != "":
-            task_list.delete(edit_index)
-            task_list.insert(edit_index, task + " -- " + priority)
-            edit_index = None
-            task_entry.delete(0, tk.END)
-            priority_entry.delete(0, tk.END)
-        else:
-            messagebox.showwarning("هشدار", "فیلدها نمی‌توانند خالی باشند!")
-
-
-def search_task():
-    search_name = task_entry.get().strip()
-    task_list.selection_clear(0, tk.END)
-    if search_name == "":
-        messagebox.showwarning("هشدار", "متن جستجو را وارد کنید!")
+    if not selected:
+        messagebox.showwarning("هشدار", "لطفاً یک کار انتخاب کنید")
         return
-    found = False
-    for i in range(task_list.size()):
-        item = task_list.get(i)
-        if search_name.lower() in item.lower():
-            task_list.selection_set(i)
-            found = True
-    if not found:
-        messagebox.showinfo("نتیجه", "چیزی پیدا نشد!")
+    task_list.itemconfig(selected[0], fg="gray")
+    save_tasks()
+    update_counter()
 
 
-label = tk.Label(root, text="لیست کارها")
+def on_close():
+    """ذخیره خودکار هنگام بستن پنجره"""
+    save_tasks()
+    root.destroy()
+
+
+# ==============================
+#   ساخت ویجت‌ها
+# ==============================
+label = tk.Label(
+    root,
+    text="لیست کارها",
+    font=("Tahoma", 14, "bold"),
+    bg="#f0f0f0"
+)
 label.pack(pady=5)
 
 task_entry = tk.Entry(root, width=30)
-task_entry.pack(pady=5)
+task_entry.pack(pady=5, padx=10, fill=tk.X)
+task_entry.bind("<Return>", lambda event: add_task())
 
-priority_entry = tk.Entry(root, width=30)
-priority_entry.pack(pady=5)
-
-add_button = tk.Button(root, text="افزودن", command=add_task)
-add_button.pack(pady=5)
-
-edit_button = tk.Button(root, text="ویرایش", command=edit_task)
-edit_button.pack(pady=5)
-
-save_button = tk.Button(root, text="ذخیره", command=save_edit)
-save_button.pack(pady=5)
-
-delete_button = tk.Button(root, text="حذف", command=delete_task)
-delete_button.pack(pady=5)
-
-done_button = tk.Button(root, text="انجام شد", command=mark_done)
-done_button.pack(pady=5)
-
-search_button = tk.Button(root, text="جستجو", command=search_task)
-search_button.pack(pady=5)
+tk.Button(root, text="افزودن", command=add_task).pack(pady=5)
+tk.Button(root, text="حذف", command=delete_task).pack(pady=5)
+tk.Button(root, text="انجام شد", command=mark_done).pack(pady=5)
+tk.Button(root, text="مرتب‌سازی", command=sort_tasks).pack(pady=5)
 
 task_list = tk.Listbox(
     root,
@@ -116,6 +155,21 @@ task_list = tk.Listbox(
     height=15,
     selectmode=tk.SINGLE
 )
-task_list.pack(pady=5, padx=10, fill=tk.X)
+task_list.pack(pady=5, padx=10, fill=tk.BOTH, expand=True)
 
+counter_label = tk.Label(
+    root,
+    text="باقی‌مانده: 0",
+    font=("Tahoma", 10),
+    bg="#f0f0f0"
+)
+counter_label.pack(pady=5)
+
+
+# ==============================
+#   اجرای برنامه
+# ==============================
+root.protocol("WM_DELETE_WINDOW", on_close)
+load_tasks()
+update_counter()
 root.mainloop()
